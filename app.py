@@ -368,11 +368,11 @@ def page_performance(df, theme):
 
     cols = st.columns(4)
     with cols[0]:
-        st.markdown(kpi_card("Total Sales", total_sales, delta_sales, prefix="$"), unsafe_allow_html=True)
+        st.markdown(kpi_card("Total Sales", total_sales), unsafe_allow_html=True)
     with cols[1]:
-        st.markdown(kpi_card("Total Profit", total_profit, delta_profit, prefix="$"), unsafe_allow_html=True)
+        st.markdown(kpi_card("Total Profit", total_profit), unsafe_allow_html=True)
     with cols[2]:
-        st.markdown(kpi_card("Profit Margin", overall_margin, delta_margin, suffix="%", fmt=".2f"), unsafe_allow_html=True)
+        st.markdown(kpi_card("Total Profit Margin", overall_margin, fmt=".2f"), unsafe_allow_html=True)
     with cols[3]:
         st.markdown(kpi_card("Total Orders", total_orders), unsafe_allow_html=True)
 
@@ -478,7 +478,7 @@ def page_performance(df, theme):
         st.plotly_chart(fig, use_container_width=True)
 
     with tab_margin:
-        fig = px.area(quarterly, x='Period', y='Profit_Margin',
+        fig = px.line(quarterly, x='Period', y='Profit_Margin', markers=True,
                       color_discrete_sequence=[t['gradient_bar'][0]])
         fig.update_traces(line_width=2)
         fig = apply_layout(fig, theme, showlegend=False)
@@ -614,13 +614,73 @@ def page_geo_product(df, theme):
     fig.update_layout(title="Profit by Sub-Category (Red = Loss)", xaxis_title="Profit ($)", yaxis_title="")
     st.plotly_chart(fig, use_container_width=True)
 
+    # ── Sub-Category Diagnosis ──
+    section_title("🩺 Sub-Category Diagnosis")
+
+    # Add Diagnosis column based on profitability metrics
+    def diagnose(row):
+        if row['Total_Profit'] < 0:
+            return '🔴 Loss-Making'
+        elif row['Avg_Discount_%'] > 15 and row['Profit_Margin_%'] < 10:
+            return '🟠 High Discount Risk'
+        elif row['Profit_Margin_%'] < 5:
+            return '🟡 Low Margin'
+        else:
+            return '🟢 Healthy / Profitable'
+
+    product_subcat['Diagnosis'] = product_subcat.apply(diagnose, axis=1)
+
+    # Sort all sub-categories by profit (worst first)
+    all_subcat = product_subcat.sort_values('Total_Profit')
+
+    # Summary count per diagnosis (all types)
+    diag_order = ['🔴 Loss-Making', '🟠 High Discount Risk', '🟡 Low Margin', '🟢 Healthy / Profitable']
+    diag_counts = all_subcat['Diagnosis'].value_counts()
+    summary_cols = st.columns(4)
+    for i, diag in enumerate(diag_order):
+        count = diag_counts.get(diag, 0)
+        with summary_cols[i]:
+            st.markdown(
+                f'<div class="kpi-card"><div class="kpi-label">{diag}</div>'
+                f'<div class="kpi-value">{count}</div>'
+                f'<div class="kpi-delta">sub-categories</div></div>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Full table of ALL sub-categories with diagnosis
+    cols_to_show = ['Category', 'Sub-Category', 'Total_Sales', 'Total_Qty',
+                    'Total_Profit', 'Profit_Margin_%', 'Avg_Discount_%', 'Diagnosis']
+    diag_display = all_subcat[cols_to_show].copy()
+    diag_display.columns = ['Category', 'Sub-Category', 'Sales ($)', 'Quantity',
+                            'Profit ($)', 'Margin (%)', 'Avg Discount (%)', 'Diagnosis']
+    diag_display = diag_display.reset_index(drop=True)
+    diag_display.index = diag_display.index + 1
+
+    st.dataframe(
+        diag_display.style
+        .format({
+            'Sales ($)': '${:,.0f}',
+            'Profit ($)': '${:,.0f}',
+            'Quantity': '{:,.0f}',
+            'Margin (%)': '{:.2f}%',
+            'Avg Discount (%)': '{:.1f}%',
+        })
+        .background_gradient(subset=['Profit ($)'], cmap='RdYlGn')
+        .background_gradient(subset=['Margin (%)'], cmap='RdYlGn')
+        .background_gradient(subset=['Avg Discount (%)'], cmap='OrRd'),
+        use_container_width=True,
+        height=600,
+    )
+
 
 # ═════════════════════════════════════════════
 # PAGE 3: Root Cause Analysis
 # ═════════════════════════════════════════════
 def page_root_cause(df, theme):
     t = THEMES[theme]
-    page_header("🔍 Root Cause Analysis", "Investigating Discount, Shipping Cost, Ship Mode & Product Mix impacts")
+    page_header("🔍 Investigating Analysis", "Investigating Discount, Shipping Cost, Ship Mode & Product Mix impacts")
 
     # ── Discount Impact ──
     section_title("💸 Discount Impact on Profitability")
@@ -682,30 +742,26 @@ def page_root_cause(df, theme):
     market_ship['Profit_Margin_%'] = (market_ship['Total_Profit'] / market_ship['Total_Sales']) * 100
     market_ship = market_ship.sort_values('Ship_to_Sales_%', ascending=False)
 
-    c1, c2 = st.columns(2)
-
-    with c1:
-        fig = px.bar(market_ship, x='Market', y='Ship_to_Sales_%',
-                     text=market_ship['Ship_to_Sales_%'].apply(lambda x: f"{x:.1f}%"),
-                     color='Ship_to_Sales_%', color_continuous_scale='OrRd')
-        fig.update_traces(textposition='outside')
-        fig = apply_layout(fig, theme, showlegend=False)
-        fig.update_layout(title="Shipping Cost / Sales Ratio by Market",
-                          xaxis_title="Market", yaxis_title="Shipping / Sales (%)",
-                          coloraxis_showscale=False)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with c2:
-        fig = px.scatter(market_ship, x='Ship_to_Sales_%', y='Profit_Margin_%',
-                         size='Total_Sales', hover_name='Market',
-                         text='Market',
-                         color_discrete_sequence=[t['accent']],
-                         size_max=50)
-        fig.update_traces(textposition='top center')
-        fig = apply_layout(fig, theme, showlegend=False)
-        fig.update_layout(title="Shipping Ratio vs Profit Margin (Bubble = Sales)",
-                          xaxis_title="Shipping / Sales (%)", yaxis_title="Profit Margin (%)")
-        st.plotly_chart(fig, use_container_width=True)
+    st.markdown("**📋 Shipping Cost Efficiency by Market (sorted by Shipping/Sales ratio)**")
+    ship_table = market_ship[['Market', 'Total_Sales', 'Total_Profit', 'Total_Shipping',
+                              'Ship_to_Sales_%', 'Profit_Margin_%']].copy()
+    ship_table.columns = ['Market', 'Sales ($)', 'Profit ($)', 'Shipping Cost ($)',
+                          'Ship/Sales (%)', 'Profit Margin (%)']
+    ship_table = ship_table.sort_values('Ship/Sales (%)', ascending=False).reset_index(drop=True)
+    ship_table.index = ship_table.index + 1  # 1-based ranking
+    st.dataframe(
+        ship_table.style
+        .format({
+            'Sales ($)': '${:,.0f}',
+            'Profit ($)': '${:,.0f}',
+            'Shipping Cost ($)': '${:,.0f}',
+            'Ship/Sales (%)': '{:.2f}%',
+            'Profit Margin (%)': '{:.2f}%',
+        })
+        .background_gradient(subset=['Ship/Sales (%)'], cmap='OrRd')
+        .background_gradient(subset=['Profit Margin (%)'], cmap='RdYlGn'),
+        use_container_width=True,
+    )
 
     # ── Discount vs Profit Scatter ──
     section_title("📊 Discount vs Profit Distribution")
@@ -720,21 +776,32 @@ def page_root_cause(df, theme):
                       xaxis_title="Discount Rate", yaxis_title="Profit ($)")
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── Diagnosis Scatter ──
+    # ── Diagnosis Table ──
     section_title("🔬 Sub-Category Diagnosis: Discount vs Margin")
 
     subcat = calculate_kpi_table(df, ['Category', 'Sub-Category'])
+    subcat_table = subcat[['Category', 'Sub-Category', 'Total_Sales', 'Total_Profit',
+                           'Avg_Discount_%', 'Profit_Margin_%', 'Order_Count']].copy()
+    subcat_table.columns = ['Category', 'Sub-Category', 'Sales ($)', 'Profit ($)',
+                            'Avg Discount (%)', 'Profit Margin (%)', 'Orders']
+    subcat_table = subcat_table.sort_values('Sales ($)', ascending=False).reset_index(drop=True)
+    subcat_table.index = subcat_table.index + 1  # 1-based ranking
 
-    fig = px.scatter(subcat, x='Avg_Discount_%', y='Profit_Margin_%',
-                     size='Total_Sales', color='Category', hover_name='Sub-Category',
-                     size_max=45, color_discrete_sequence=px.colors.qualitative.Vivid,
-                     hover_data={'Total_Sales': ':$,.0f', 'Total_Profit': ':$,.0f'})
-    fig.add_hline(y=0, line_dash="dash", line_color="red", line_width=1,
-                  annotation_text="Break-even", annotation_position="bottom right")
-    fig = apply_layout(fig, theme, height=480)
-    fig.update_layout(title="Avg Discount vs Profit Margin by Sub-Category",
-                      xaxis_title="Average Discount (%)", yaxis_title="Profit Margin (%)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(
+        subcat_table.style
+        .format({
+            'Sales ($)': '${:,.0f}',
+            'Profit ($)': '${:,.0f}',
+            'Avg Discount (%)': '{:.1f}%',
+            'Profit Margin (%)': '{:.2f}%',
+            'Orders': '{:,.0f}',
+        })
+        .background_gradient(subset=['Profit Margin (%)'], cmap='RdYlGn')
+        .background_gradient(subset=['Sales ($)'], cmap='Blues')
+        .background_gradient(subset=['Avg Discount (%)'], cmap='OrRd'),
+        use_container_width=True,
+        height=520,
+    )
 
 
 # ═════════════════════════════════════════════
@@ -742,7 +809,7 @@ def page_root_cause(df, theme):
 # ═════════════════════════════════════════════
 def page_segment(df, theme):
     t = THEMES[theme]
-    page_header("🎯 Segment & Trouble Spots", "Customer Segment analysis and pinpointing the biggest loss concentrations")
+    page_header("🎯 Customer Segment Analysis", "Customer Segment analysis and pinpointing the biggest loss concentrations")
 
     # ── Segment Performance ──
     section_title("👥 Customer Segment Performance")
@@ -862,9 +929,9 @@ def main():
             "📑 Navigation",
             [
                 "📈 Performance Overview",
-                "🌍 Geographic & Product",
-                "🔍 Root Cause Analysis",
-                "🎯 Segment & Trouble Spots",
+                "🌍 Product Analysis",
+                "🔍 Margin Analysis",
+                "🎯 Segment Analysis",
             ],
             index=0,
         )
@@ -920,11 +987,11 @@ def main():
     # Route to page
     if "Performance" in page:
         page_performance(df_filtered, theme)
-    elif "Geographic" in page:
+    elif "Product Analysis" in page:
         page_geo_product(df_filtered, theme)
-    elif "Root Cause" in page:
+    elif "Margin Analysis" in page:
         page_root_cause(df_filtered, theme)
-    elif "Segment" in page:
+    elif "Segment Analysis" in page:
         page_segment(df_filtered, theme)
 
 
