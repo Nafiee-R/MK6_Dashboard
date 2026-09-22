@@ -534,17 +534,16 @@ def page_geo_product(df, theme):
         [1.0,  '#059669'],
     ]
 
-    # Mapbox style based on theme
-    mapbox_style = 'carto-darkmatter' if 'Dark' in theme else 'carto-positron'
+    # Mapbox/Map style based on theme
+    tile_style = 'carto-darkmatter' if 'Dark' in theme else 'carto-positron'
 
-    fig = px.choropleth_mapbox(
-        geo_matched,
+    # Common arguments for map-based choropleth
+    map_kwargs = dict(
         geojson=geojson,
         locations='geo_id',
         color='Total_Profit',
         color_continuous_scale=custom_colorscale,
         color_continuous_midpoint=0,
-        mapbox_style=mapbox_style,
         zoom=1.1,
         center={"lat": 20, "lon": 15},
         opacity=0.75,
@@ -562,25 +561,88 @@ def page_geo_product(df, theme):
             'Profit_Margin_%': 'Margin (%)',
         },
     )
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        height=550,
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(family="Inter, sans-serif", color=t['text']),
-        coloraxis_colorbar=dict(
-            title=dict(text="Profit ($)", font=dict(size=12)),
-            thickness=14,
-            len=0.55,
-            bgcolor='rgba(0,0,0,0)',
-            borderwidth=0,
-            tickfont=dict(size=10),
-            x=0.99,
-        ),
-    )
-    fig.update_traces(
-        marker_line_width=0.5,
-        marker_line_color='rgba(255,255,255,0.3)' if 'Dark' in theme else 'rgba(0,0,0,0.1)',
-    )
+
+    # Try Plotly 6+ API first, then 5.x, then basic fallback
+    choropleth_fn = getattr(px, 'choropleth_map', None)
+    style_key = 'map_style'
+    if choropleth_fn is None:
+        choropleth_fn = getattr(px, 'choropleth_mapbox', None)
+        style_key = 'mapbox_style'
+
+    if choropleth_fn is not None:
+        map_kwargs[style_key] = tile_style
+        fig = choropleth_fn(geo_matched, **map_kwargs)
+        fig.update_layout(
+            margin=dict(l=0, r=0, t=0, b=0),
+            height=550,
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(family="Inter, sans-serif", color=t['text']),
+            coloraxis_colorbar=dict(
+                title=dict(text="Profit ($)", font=dict(size=12)),
+                thickness=14,
+                len=0.55,
+                bgcolor='rgba(0,0,0,0)',
+                borderwidth=0,
+                tickfont=dict(size=10),
+                x=0.99,
+            ),
+        )
+        fig.update_traces(
+            marker_line_width=0.5,
+            marker_line_color='rgba(255,255,255,0.3)' if 'Dark' in theme else 'rgba(0,0,0,0.1)',
+        )
+    else:
+        # Fallback: enhanced px.choropleth (works on any Plotly version)
+        fig = px.choropleth(
+            geo_matched,
+            geojson=geojson,
+            locations='geo_id',
+            color='Total_Profit',
+            color_continuous_scale=custom_colorscale,
+            color_continuous_midpoint=0,
+            hover_name='Country',
+            hover_data={
+                'Total_Sales': ':$,.0f',
+                'Total_Profit': ':$,.0f',
+                'Profit_Margin_%': ':.2f',
+                'geo_id': False,
+                'Country': False,
+            },
+            labels={
+                'Total_Profit': 'Profit ($)',
+                'Total_Sales': 'Sales ($)',
+                'Profit_Margin_%': 'Margin (%)',
+            },
+        )
+        fig.update_geos(
+            showcoastlines=True, coastlinecolor="rgba(0,0,0,0.15)",
+            showland=True, landcolor="#F1F5F9" if 'Dark' not in theme else "#1E293B",
+            showocean=True, oceancolor="#E0F2FE" if 'Dark' not in theme else "#0F172A",
+            showframe=False,
+            projection_type='natural earth',
+            showcountries=True, countrycolor='rgba(0,0,0,0.08)',
+        )
+        fig.update_layout(
+            margin=dict(l=0, r=0, t=0, b=0),
+            height=550,
+            paper_bgcolor='rgba(0,0,0,0)',
+            geo=dict(bgcolor='rgba(0,0,0,0)'),
+            font=dict(family="Inter, sans-serif", color=t['text']),
+            coloraxis_colorbar=dict(
+                title=dict(text="Profit ($)", font=dict(size=12)),
+                thickness=14,
+                len=0.55,
+                bgcolor='rgba(0,0,0,0)',
+                borderwidth=0,
+                tickfont=dict(size=10),
+                x=0.99,
+            ),
+        )
+        fig.update_traces(
+            marker_line_width=0.5,
+            marker_line_color='rgba(255,255,255,0.3)' if 'Dark' in theme else 'rgba(0,0,0,0.08)',
+        )
+
     st.plotly_chart(fig, use_container_width=True)
 
     # ── Market & Region ──
