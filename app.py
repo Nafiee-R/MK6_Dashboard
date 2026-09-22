@@ -509,29 +509,36 @@ def page_geo_product(df, theme):
 
     geojson = load_geojson(geojson_url)
 
-    # Build a lookup: country name → feature id (using ADMIN field)
+    # Build a lookup: country name → feature id (using 'name' field)
     name_to_id = {}
     for feat in geojson['features']:
         props = feat.get('properties', {})
-        name = props.get('ADMIN', props.get('name', ''))
+        name = props.get('name', '')
         name_to_id[name] = name
         feat['id'] = name
 
-    # Match country names to GeoJSON feature IDs
-    geo_country['geo_id'] = geo_country['Country'].map(name_to_id)
+    # Alias mapping: dataset name → GeoJSON name (for mismatches)
+    COUNTRY_ALIASES = {
+        'United States': 'United States of America',
+        'Czech Republic': 'Czechia',
+        'Myanmar (Burma)': 'Myanmar',
+        'Tanzania': 'United Republic of Tanzania',
+        'Swaziland': 'Eswatini',
+        'Macedonia': 'North Macedonia',
+        "Cote d'Ivoire": "Côte d'Ivoire",
+    }
+    geo_country['geo_id'] = geo_country['Country'].map(
+        lambda c: name_to_id.get(c, name_to_id.get(COUNTRY_ALIASES.get(c, ''), None))
+    )
     geo_matched = geo_country.dropna(subset=['geo_id'])
 
-    # Custom diverging color scale: red → warm white → green
+    # Custom diverging color scale: dark red → pink → white → mint → green
     custom_colorscale = [
-        [0.0,  '#DC2626'],
-        [0.15, '#F87171'],
-        [0.30, '#FCA5A5'],
-        [0.42, '#FDE68A'],
-        [0.50, '#FEFCE8'],
-        [0.58, '#BBF7D0'],
-        [0.70, '#6EE7B7'],
-        [0.85, '#34D399'],
-        [1.0,  '#059669'],
+        [0.00, '#8B0000'],   # very high loss
+        [0.45, '#EF4444'],   # loss
+        [0.50, '#FACC15'],   # neutral / zero
+        [0.55, '#22C55E'],   # profit
+        [1.00, '#006400'],   # very high profit
     ]
 
     # Mapbox/Map style based on theme
