@@ -493,42 +493,93 @@ def page_geo_product(df, theme):
     t = THEMES[theme]
     page_header("🌍 Geographic & Product Drilldown", "Drill down by Market → Region → Country, and by Category → Sub-Category")
 
-    # ── Choropleth Map ──
+    # ── Premium Choropleth Map (Mapbox) ──
     section_title("🗺️ Profit by Country (Spatial Visualization)")
 
     geo_country = calculate_kpi_table(df, ['Country'])
 
-    # Country name to ISO-3 mapping via plotly's built-in
-    fig = px.choropleth(
-        geo_country,
-        locations='Country',
-        locationmode='country names',
+    # Load GeoJSON for country boundaries
+    geojson_url = "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson"
+
+    @st.cache_data(show_spinner=False)
+    def load_geojson(url):
+        import json, urllib.request
+        with urllib.request.urlopen(url) as resp:
+            return json.loads(resp.read().decode())
+
+    geojson = load_geojson(geojson_url)
+
+    # Build a lookup: country name → feature id (using ADMIN field)
+    name_to_id = {}
+    for feat in geojson['features']:
+        props = feat.get('properties', {})
+        name = props.get('ADMIN', props.get('name', ''))
+        name_to_id[name] = name
+        feat['id'] = name
+
+    # Match country names to GeoJSON feature IDs
+    geo_country['geo_id'] = geo_country['Country'].map(name_to_id)
+    geo_matched = geo_country.dropna(subset=['geo_id'])
+
+    # Custom diverging color scale: red → warm white → green
+    custom_colorscale = [
+        [0.0,  '#DC2626'],
+        [0.15, '#F87171'],
+        [0.30, '#FCA5A5'],
+        [0.42, '#FDE68A'],
+        [0.50, '#FEFCE8'],
+        [0.58, '#BBF7D0'],
+        [0.70, '#6EE7B7'],
+        [0.85, '#34D399'],
+        [1.0,  '#059669'],
+    ]
+
+    # Mapbox style based on theme
+    mapbox_style = 'carto-darkmatter' if 'Dark' in theme else 'carto-positron'
+
+    fig = px.choropleth_mapbox(
+        geo_matched,
+        geojson=geojson,
+        locations='geo_id',
         color='Total_Profit',
-        color_continuous_scale='RdYlGn',
+        color_continuous_scale=custom_colorscale,
         color_continuous_midpoint=0,
+        mapbox_style=mapbox_style,
+        zoom=1.1,
+        center={"lat": 20, "lon": 15},
+        opacity=0.75,
         hover_name='Country',
         hover_data={
             'Total_Sales': ':$,.0f',
             'Total_Profit': ':$,.0f',
             'Profit_Margin_%': ':.2f',
+            'geo_id': False,
             'Country': False,
         },
-        labels={'Total_Profit': 'Profit ($)', 'Total_Sales': 'Sales ($)', 'Profit_Margin_%': 'Margin (%)'},
-    )
-    fig.update_geos(
-        showcoastlines=True, coastlinecolor="rgba(0,0,0,0.2)",
-        showland=True, landcolor="#F1F5F9" if 'Dark' not in theme else "#1E293B",
-        showocean=True, oceancolor="#E0F2FE" if 'Dark' not in theme else "#0F172A",
-        showframe=False,
-        projection_type='natural earth',
+        labels={
+            'Total_Profit': 'Profit ($)',
+            'Total_Sales': 'Sales ($)',
+            'Profit_Margin_%': 'Margin (%)',
+        },
     )
     fig.update_layout(
-        margin=dict(l=0, r=0, t=30, b=0),
-        height=480,
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=550,
         paper_bgcolor='rgba(0,0,0,0)',
-        geo=dict(bgcolor='rgba(0,0,0,0)'),
         font=dict(family="Inter, sans-serif", color=t['text']),
-        coloraxis_colorbar=dict(title="Profit ($)", thickness=15, len=0.6),
+        coloraxis_colorbar=dict(
+            title=dict(text="Profit ($)", font=dict(size=12)),
+            thickness=14,
+            len=0.55,
+            bgcolor='rgba(0,0,0,0)',
+            borderwidth=0,
+            tickfont=dict(size=10),
+            x=0.99,
+        ),
+    )
+    fig.update_traces(
+        marker_line_width=0.5,
+        marker_line_color='rgba(255,255,255,0.3)' if 'Dark' in theme else 'rgba(0,0,0,0.1)',
     )
     st.plotly_chart(fig, use_container_width=True)
 
