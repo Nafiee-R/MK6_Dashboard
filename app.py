@@ -368,11 +368,11 @@ def page_performance(df, theme):
 
     cols = st.columns(4)
     with cols[0]:
-        st.markdown(kpi_card("Total Sales", total_sales), unsafe_allow_html=True)
+        st.markdown(kpi_card("Total Sales", f'${total_sales:,.0f}', fmt=""), unsafe_allow_html=True)
     with cols[1]:
-        st.markdown(kpi_card("Total Profit", total_profit), unsafe_allow_html=True)
+        st.markdown(kpi_card("Total Profit", f'${total_profit:,.0f}', fmt=""), unsafe_allow_html=True)
     with cols[2]:
-        st.markdown(kpi_card("Total Profit Margin", overall_margin, fmt=".2f"), unsafe_allow_html=True)
+        st.markdown(kpi_card("Total Profit Margin", f"{overall_margin:.2f}%", fmt=""), unsafe_allow_html=True)
     with cols[3]:
         st.markdown(kpi_card("Total Orders", total_orders), unsafe_allow_html=True)
 
